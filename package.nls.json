@@ -1,0 +1,9 @@
+{
+  "extension.description": "Run the opencode v2 TUI inside VS Code and inject the current file or selection as an @path#Lx-Ly reference",
+  "command.openTerminal": "Open opencode",
+  "command.openNewTerminal": "Open opencode in new tab",
+  "command.addFilepathToTerminal": "Add file reference to opencode",
+  "config.binary": "Command used to launch the TUI. Accepts a full path or flags, for example opencode --standalone",
+  "config.terminalName": "Terminal name used to decide whether to reuse an existing session. Keeping the default lets it reuse a terminal you opened yourself",
+  "config.injectOnLaunch": "Also inject the current file reference when creating a new terminal. Off by default: characters sent before the TUI takes over input can be executed by the shell"
+}

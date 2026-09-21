@@ -1,0 +1,9 @@
+{
+  "extension.description": "在 VS Code 里启动 opencode v2 的 TUI，并把当前文件或选区以 @path#Lx-Ly 引用注入会话",
+  "command.openTerminal": "打开 opencode",
+  "command.openNewTerminal": "在新建标签页中打开 opencode",
+  "command.addFilepathToTerminal": "把文件引用加入 opencode",
+  "config.binary": "启动 TUI 的命令。可填完整路径或带参数，例如 opencode --standalone",
+  "config.terminalName": "终端名，用于判定是否复用已有会话。保持默认值可以复用你手动打开的 opencode 终端",
+  "config.injectOnLaunch": "新建终端时也注入当前文件引用。默认关闭：TUI 接管输入前发送的字符有被 shell 当成命令执行的风险"
+}

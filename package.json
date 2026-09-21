@@ -1,0 +1,92 @@
+{
+  "name": "vscode-opencode-v2",
+  "displayName": "OpenCode v2 TUI",
+  "description": "%extension.description%",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "ocv2.openTerminal",
+        "title": "%command.openTerminal%"
+      },
+      {
+        "command": "ocv2.openNewTerminal",
+        "title": "%command.openNewTerminal%",
+        "icon": {
+          "light": "images/icon-light.svg",
+          "dark": "images/icon-dark.svg"
+        }
+      },
+      {
+        "command": "ocv2.addFilepathToTerminal",
+        "title": "%command.addFilepathToTerminal%"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "ocv2.openTerminal",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape"
+      },
+      {
+        "command": "ocv2.openNewTerminal",
+        "key": "ctrl+shift+escape",
+        "mac": "cmd+shift+escape"
+      },
+      {
+        "command": "ocv2.addFilepathToTerminal",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "ocv2.openNewTerminal",
+          "group": "navigation",
+          "when": "editorFocus"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OpenCode v2 TUI",
+      "properties": {
+        "ocv2.binary": {
+          "type": "string",
+          "default": "opencode",
+          "description": "%config.binary%"
+        },
+        "ocv2.terminalName": {
+          "type": "string",
+          "default": "opencode",
+          "description": "%config.terminalName%"
+        },
+        "ocv2.injectOnLaunch": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.injectOnLaunch%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . -w",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.94.0",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^7.0.2"
+  }
+}
