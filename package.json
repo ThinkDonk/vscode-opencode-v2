@@ -82,6 +82,7 @@
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -p . -w",
+    "test": "npm run compile && node test/smoke.js",
     "package": "vsce package --allow-missing-repository"
   },
   "devDependencies": {
