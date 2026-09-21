@@ -3,8 +3,12 @@
   "displayName": "OpenCode v2 TUI",
   "description": "%extension.description%",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "ThinkDonk",
   "license": "MIT",
+  "galleryBanner": {
+    "color": "#1F2023",
+    "theme": "dark"
+  },
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
@@ -26,6 +30,7 @@
     "vscode": "^1.94.0"
   },
   "categories": [
+    "AI",
     "Other"
   ],
   "main": "./out/extension.js",
@@ -99,6 +104,7 @@
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -p . -w",
+    "vscode:prepublish": "npm run compile",
     "test": "npm run compile && node test/smoke.js",
     "package": "vsce package"
   },
