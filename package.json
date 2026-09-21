@@ -5,6 +5,23 @@
   "version": "0.1.0",
   "publisher": "local",
   "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ThinkDonk/vscode-opencode-v2.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ThinkDonk/vscode-opencode-v2/issues"
+  },
+  "homepage": "https://github.com/ThinkDonk/vscode-opencode-v2#readme",
+  "keywords": [
+    "opencode",
+    "tui",
+    "terminal",
+    "ai",
+    "agent",
+    "v2"
+  ],
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -83,7 +100,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -p . -w",
     "test": "npm run compile && node test/smoke.js",
-    "package": "vsce package --allow-missing-repository"
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/vscode": "^1.94.0",
