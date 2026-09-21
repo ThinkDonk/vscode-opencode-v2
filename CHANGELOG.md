@@ -19,8 +19,8 @@
 
 ### Notes
 
-- 只走终端通道，不使用 opencode 的任何 HTTP 接口，因此不受 v1 → v2 接口变更影响
-- 与 `sst-dev.opencode` 存在终端名冲突，同时安装时需禁用后者
+- 只走终端通道：不调用 opencode 的 HTTP 接口、不解析 stdout、不探测版本，因此不受 CLI 接口变更影响
+- 终端复用依据名字 `opencode`；需要隔离时改 `ocv2.terminalName`
 
 [Unreleased]: https://github.com/ThinkDonk/vscode-opencode-v2/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ThinkDonk/vscode-opencode-v2/releases/tag/v0.1.0

@@ -11,17 +11,13 @@
 
 Run the [opencode](https://opencode.ai) **v2** TUI inside VS Code, and push the current file or selection into the session as an `@path#Lx-Ly` reference.
 
-## Why this exists
+## What it is
 
-SST's `opencode for VS Code` extension was last published on **2025-12-28** (v0.0.13) and still starts the agent the v1 way:
+A VS Code extension for **opencode v2**. It runs the agent's terminal UI inside VS Code and pushes the current file or selection into the session as an `@path#Lx-Ly` reference.
 
-```
-opencode --port ${port}          # then polls localhost:port/app and POSTs /tui/append-prompt
-```
+It launches the plain `opencode` command in an integrated terminal, sets `OPENCODE_CALLER=vscode`, and writes references into the running TUI with `terminal.sendText`. There is no HTTP client, no stdout parsing and no version probing — see [How it works](#how-it-works).
 
-opencode v2 (npm package `@opencode/cli`, first released 2026-09-02) removed `--port` from the root command — it now runs a background service plus a separate `serve` subcommand. So the official extension fails on v2 with `Unrecognized flag: --port` (issue [#49992](https://github.com/anomalyco/opencode/issues/49992)). Its sibling `sst-dev.opencode-v2` ("OpenCode Beta") waits for a stdout marker that v2 no longer prints, and hits a 15-second timeout instead (issue [#50043](https://github.com/anomalyco/opencode/issues/50043)).
-
-The upstream fix exists as PR [#49084](https://github.com/anomalyco/opencode/pull/49084) (opened 2026-09-15, still unmerged). It removes `--port`, drops the HTTP polling, and injects file references through `terminal.sendText` instead. **This extension is that idea, rewritten from scratch** — no HTTP API, no stdout parsing, just the terminal text channel.
+It targets the `@opencode/cli` v2 line, where running `opencode` on its own opens the TUI.
 
 ## Commands
 
@@ -37,25 +33,27 @@ The upstream fix exists as PR [#49084](https://github.com/anomalyco/opencode/pul
 
 The reference format matches opencode's `@` syntax: `@src/main.ts`, or `@src/main.ts#L37` for a single-line selection, or `@src/main.ts#L37-42` for multiple lines. The text is inserted without a trailing newline, so you can keep typing before sending.
 
-> The official extension declares its keybindings as `cmd+escape` / `cmd+alt+k` only. `cmd` does not exist on Windows or Linux, so the `Ctrl+Esc` shortcut its README advertises is dead there. Here `key` and `mac` are declared separately, so both platforms work.
+> Keybindings declare `key` for Windows and Linux plus a separate `mac` override, so `Ctrl+Esc` and `Ctrl+Alt+K` work outside macOS as well.
 
 ## Install
 
 Requires the opencode v2 CLI on your `PATH` (`opencode --version` should print `2.x`).
 
-```bash
-# from a published .vsix
-code --install-extension vscode-opencode-v2-0.1.0.vsix
+From the Marketplace — search for **OpenCode v2 TUI** in the Extensions view, or run:
 
-# or build it yourself
+```bash
+code --install-extension ThinkDonk.vscode-opencode-v2
+```
+
+Or build from source:
+
+```bash
 npm install
 npm run package
-code --install-extension vscode-opencode-v2-0.1.0.vsix
+code --install-extension vscode-opencode-v2-<version>.vsix
 ```
 
 Then run `Developer: Reload Window`.
-
-If you also have `sst-dev.opencode` installed, disable it first — both extensions look for a terminal named `opencode`, and the official one will send `opencode --port` into it, which v2 rejects.
 
 ## Settings
 
@@ -72,9 +70,9 @@ Terminal only. The extension spawns exactly `opencode` (no flags), sets `OPENCOD
 ## Known limitations
 
 - **No injection at launch.** When a terminal is created, the TUI has not taken over stdin yet; text sent at that moment can be executed by the shell as a command. The safe flow is `Ctrl+Esc` to launch, then `Ctrl+Alt+K` to inject. Set `ocv2.injectOnLaunch` to `true` if you want to take that risk anyway.
-- **No v1 features.** There is no HTTP port, no reading `/app`, no `append-prompt`. Capabilities that depended on the v1 server API — such as previewing opencode diffs inside VS Code — are not available.
-- **Reuse is decided by terminal name.** Two extensions managing a terminal called `opencode` will fight over it.
-- **No version detection.** Point `ocv2.binary` at a v1 binary and it simply launches it, without the v1 integration the old extension provided.
+- **No server-based integration.** Everything goes through the terminal, so anything that needs opencode's HTTP server — diff previews inside the editor, session APIs — is out of scope.
+- **Reuse is decided by terminal name.** A terminal you opened yourself under the configured name (`opencode` by default) will be reused; change `ocv2.terminalName` if you want isolation.
+- **No version detection.** Point `ocv2.binary` at another build and it will simply launch it.
 
 ## Development
 

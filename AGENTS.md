@@ -4,7 +4,7 @@
 
 ## 这是什么
 
-一个 VS Code 扩展：把 opencode v2 的 TUI 拉进 VS Code 终端，并把当前文件/选区以 `@path#Lx-Ly` 引用注入会话。存在的唯一理由是官方扩展（`sst-dev.opencode`）在 opencode v2 上失效，见 README 的「为什么有这个东西」。
+一个面向 opencode v2 的 VS Code 扩展：把 TUI 拉进 VS Code 终端，并把当前文件/选区以 `@path#Lx-Ly` 引用注入会话。
 
 ## 技术栈
 
@@ -14,7 +14,7 @@
 
 ## 架构约束（改代码前先读）
 
-1. **只走终端通道**。所有与 opencode 的交互通过 `createTerminal` / `sendText` 完成，不调用 opencode 的任何 HTTP 接口、不解析它的 stdout。v2 已经把 v1 的 `--port` 与 `/tui/append-prompt` 删掉，这正是官方扩展坏掉的原因，不要走回头路。
+1. **只走终端通道**。所有与 opencode 的交互通过 `createTerminal` / `sendText` 完成，不调用 opencode 的任何 HTTP 接口、不解析它的 stdout。v2 已经删掉了 v1 的 `--port` 与 `/tui/append-prompt`，任何依赖它们的集成都会失效，不要走回头路。
 2. **不做 opencode 版本探测**。需要区分 v1/v2 时说明设计错了。启动命令一律是裸 `opencode`（可由 `ocv2.binary` 覆盖）。
 3. **不自动为新建终端注入引用**。TUI 接管 stdin 之前发送的字符有被 shell 执行的风险，`injectOnLaunch` 默认必须是 `false`。
 4. **终端名字是复用判定的唯一依据**。改动 `terminalName` 相关逻辑要同步 README 的「已知边界」。
@@ -59,13 +59,17 @@ npm run package                      # 必须产出 vscode-opencode-v2-<version>
 - 提交信息用中文 + gitmoji 前缀
 - 不自动 push
 
-## 上传到 GitHub / 发布前检查
+## 仓库与发布
 
-仓库地址：`https://github.com/ThinkDonk/vscode-opencode-v2`，已写入 `package.json` 的 `repository` / `bugs` / `homepage`、两个 README 的 CI 徽章与 `CHANGELOG.md` 的 compare 链接。改仓库名或整体迁移时，这几处要一起改。
+仓库地址 `https://github.com/ThinkDonk/vscode-opencode-v2`，已写入 `package.json` 的 `repository` / `bugs` / `homepage`、两个 README 的 CI 徽章与 `CHANGELOG.md` 的 compare 链接。改仓库名或整体迁移时，这几处要一起改。
 
-1. `publisher` 仍是 `local`，要发布到 Marketplace 需改成自己的 publisher id
-2. 提交身份走的是仓库级 `user.email`（个人邮箱）；全局 git 配置仍是公司邮箱，在本仓库之外提交时要注意
-3. 版本号、`CHANGELOG.md`、`package.json` 的 `version` 三者要一致
+### 发布到 VS Code Marketplace
+
+1. `package.json` 的 `publisher` 必须等于 Marketplace 上已存在的 publisher id（当前为 `ThinkDonk`），扩展 id 是 `<publisher>.<name>` = `ThinkDonk.vscode-opencode-v2`
+2. 打标签前先定版本：改 `package.json` 的 `version`、在 `CHANGELOG.md` 补条目，两者必须一致
+3. 本地发布：`vsce login ThinkDonk`（粘 PAT）→ `vsce publish`。`package.json` 里的 `vscode:prepublish` 会在打包前自动跑 `tsc`，所以不用手动编译
+4. PAT 需要 Azure DevOps 的 Marketplace → Manage 权限；不要把 PAT 写进仓库，交给 CI 时用仓库 secret
+5. 提交身份走仓库级 `user.email`（个人邮箱）；全局 git 配置仍是公司邮箱，在本仓库之外提交时要注意
 
 ## 边界
 

@@ -11,17 +11,13 @@
 
 在 VS Code 里运行 [opencode](https://opencode.ai) **v2** 的 TUI，并把当前文件或选区以 `@path#Lx-Ly` 引用注入会话。
 
-## 为什么有这个东西
+## 这是什么
 
-SST 的 `opencode for VS Code` 扩展最后发布于 **2025-12-28**（v0.0.13），启动方式还是 v1 那一套：
+一个面向 **opencode v2** 的 VS Code 扩展。它在 VS Code 里运行 opencode 的终端界面（TUI），并把当前文件或选区以 `@path#Lx-Ly` 引用注入会话。
 
-```
-opencode --port ${port}          # 再用 HTTP 轮询 localhost:port/app、POST /tui/append-prompt
-```
+实现上只做三件事：在集成终端里启动裸 `opencode` 命令、设置 `OPENCODE_CALLER=vscode`、用 `terminal.sendText` 把引用写进 TUI。没有 HTTP 客户端、不解析 stdout、不探测版本，详见[实现方式](#实现方式)。
 
-而 opencode v2（npm 包 `@opencode/cli`，2026-09-02 首发）删掉了根命令的 `--port`，改成常驻后台服务 + 独立的 `serve` 子命令。于是官方扩展在 v2 上直接报 `Unrecognized flag: --port`（issue [#49992](https://github.com/anomalyco/opencode/issues/49992)）。同门的 `sst-dev.opencode-v2`（"OpenCode Beta"）等的是 v2 已经不再打印的 stdout 标记，结果是 15 秒超时（issue [#50043](https://github.com/anomalyco/opencode/issues/50043)）。
-
-上游的修复是 PR [#49084](https://github.com/anomalyco/opencode/pull/49084)（2026-09-15 提交，至今未合并），做的事是**去掉 `--port`、删掉 HTTP 轮询、注入引用改用 `terminal.sendText`**。**本扩展就是那个思路的重写版** —— 不碰 HTTP API，不解析 stdout，只走终端文本通道。
+对应 `@opencode/cli` 的 v2 版本线，也就是直接运行 `opencode` 就进入 TUI 的那一套。
 
 ## 命令与键位
 
@@ -37,25 +33,27 @@ opencode --port ${port}          # 再用 HTTP 轮询 localhost:port/app、POST 
 
 引用格式与 opencode 的 `@` 语法一致：`@src/main.ts`，选中单行是 `@src/main.ts#L37`，多行是 `@src/main.ts#L37-42`。写入时不带结尾换行，你可以继续补内容再发送。
 
-> 官方扩展的键位只声明了 `cmd+escape` / `cmd+alt+k`，而 `cmd` 在 Windows 和 Linux 上并不存在，所以它 README 里承诺的 `Ctrl+Esc` 在那两个平台上是失效的。本扩展把 `key` 和 `mac` 分开声明，两端都可用。
+> 键位用 `key` 声明 Windows/Linux、用 `mac` 单独覆盖 macOS，所以 `Ctrl+Esc`、`Ctrl+Alt+K` 在非 macOS 平台上同样可用。
 
 ## 安装
 
 需要 `PATH` 里有 opencode v2 CLI（`opencode --version` 应输出 `2.x`）。
 
-```bash
-# 用已打包的 vsix
-code --install-extension vscode-opencode-v2-0.1.0.vsix
+在扩展市场里搜索 **OpenCode v2 TUI**，或者直接执行：
 
-# 或自己构建
+```bash
+code --install-extension ThinkDonk.vscode-opencode-v2
+```
+
+也可以从源码构建：
+
+```bash
 npm install
 npm run package
-code --install-extension vscode-opencode-v2-0.1.0.vsix
+code --install-extension vscode-opencode-v2-<version>.vsix
 ```
 
 装完执行一次 `Developer: Reload Window`。
-
-如果你还装着 `sst-dev.opencode`，请先禁用它 —— 两个扩展都会去找名为 `opencode` 的终端，而官方那个会往里发 `opencode --port`，v2 会直接报错。
 
 ## 设置项
 
@@ -72,9 +70,9 @@ code --install-extension vscode-opencode-v2-0.1.0.vsix
 ## 已知边界
 
 - **启动那一刻不注入引用**。终端刚创建时 TUI 还没接管 stdin，此时发送的字符可能被 shell 当命令执行。安全流程是先 `Ctrl+Esc` 起 TUI，再 `Ctrl+Alt+K` 送引用。确实想冒这个险就把 `ocv2.injectOnLaunch` 设为 `true`。
-- **不提供 v1 的功能**。没有 HTTP 端口、不读 `/app`、不做 `append-prompt`。依赖 v1 服务端接口的能力 —— 比如在 VS Code 里预览 opencode 的 diff —— 这里没有。
-- **复用判定只看终端名**。两个扩展都想管名为 `opencode` 的终端时，会互相抢。
-- **不做版本探测**。把 `ocv2.binary` 指向 v1 的二进制，它就只是把 v1 启起来，不具备旧扩展那套 v1 集成。
+- **不提供服务端集成**。一切都走终端，所以需要 opencode HTTP 服务的能力 —— 比如在编辑器里预览 diff、会话接口 —— 不在范围内。
+- **复用判定只看终端名**。你自己开的、名字等于配置值（默认 `opencode`）的终端会被复用；想要隔离就改 `ocv2.terminalName`。
+- **不做版本探测**。把 `ocv2.binary` 指向别的构建，它就只是把它启起来。
 
 ## 开发
 
