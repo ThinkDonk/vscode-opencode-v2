@@ -3,6 +3,12 @@
   "command.openTerminal": "Open opencode",
   "command.openNewTerminal": "Open opencode in new tab",
   "command.addFilepathToTerminal": "Add file reference to opencode",
+  "command.addFilesToTerminal": "Add selected files to opencode",
+  "dialog.addFiles": "Add references to opencode",
+  "message.noTerminal": "No opencode terminal is open. Run Open opencode and wait for the TUI to be ready first.",
+  "message.terminalClosed": "The selected opencode terminal was closed. Nothing was added.",
+  "message.noFile": "No file is open, the file is outside the workspace, or its path contains control characters.",
+  "message.invalidFiles": "Select only existing files inside the workspace, with no control characters in their paths. Nothing was added.",
   "config.binary": "Command used to launch the TUI. Accepts a full path or flags, for example opencode --standalone",
   "config.terminalName": "Terminal name used to decide whether to reuse an existing session. Keeping the default lets it reuse a terminal you opened yourself",
   "config.injectOnLaunch": "Also inject the current file reference when creating a new terminal. Off by default: characters sent before the TUI takes over input can be executed by the shell"

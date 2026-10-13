@@ -52,6 +52,10 @@
       {
         "command": "ocv2.addFilepathToTerminal",
         "title": "%command.addFilepathToTerminal%"
+      },
+      {
+        "command": "ocv2.addFilesToTerminal",
+        "title": "%command.addFilesToTerminal%"
       }
     ],
     "keybindings": [
@@ -72,6 +76,13 @@
       }
     ],
     "menus": {
+      "explorer/context": [
+        {
+          "command": "ocv2.addFilesToTerminal",
+          "group": "opencode",
+          "when": "!explorerResourceIsFolder"
+        }
+      ],
       "editor/title": [
         {
           "command": "ocv2.openNewTerminal",

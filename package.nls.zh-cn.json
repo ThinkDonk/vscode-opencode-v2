@@ -3,6 +3,12 @@
   "command.openTerminal": "打开 opencode",
   "command.openNewTerminal": "在新建标签页中打开 opencode",
   "command.addFilepathToTerminal": "把文件引用加入 opencode",
+  "command.addFilesToTerminal": "把选中的文件加入 opencode",
+  "dialog.addFiles": "把引用加入 opencode",
+  "message.noTerminal": "没有正在运行的 opencode 终端，请先执行「打开 opencode」并等待 TUI 就绪。",
+  "message.terminalClosed": "所选的 opencode 终端已关闭，未加入任何内容。",
+  "message.noFile": "当前没有打开文件、文件不属于任何工作区，或路径包含控制字符。",
+  "message.invalidFiles": "请选择工作区内已存在的文件，路径不能包含控制字符。本次未加入任何引用。",
   "config.binary": "启动 TUI 的命令。可填完整路径或带参数，例如 opencode --standalone",
   "config.terminalName": "终端名，用于判定是否复用已有会话。保持默认值可以复用你手动打开的 opencode 终端",
   "config.injectOnLaunch": "新建终端时也注入当前文件引用。默认关闭：TUI 接管输入前发送的字符有被 shell 当成命令执行的风险"

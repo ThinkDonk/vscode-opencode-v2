@@ -1,5 +1,5 @@
 /**
- * 零依赖冒烟测试：用一个假的 vscode 模块加载 out/extension.js，验证三个命令的行为。
+ * 零依赖冒烟测试：用一个假的 vscode 模块加载 out/extension.js，验证命令的行为。
  * 运行：npm test（需先 npm run compile）
  */
 const assert = require("assert")
@@ -14,6 +14,7 @@ function makeStub(options = {}) {
     warnings: [],
     commands: new Map(),
     created: [],
+    dialogs: [],
   }
 
   const config = {
@@ -38,6 +39,8 @@ function makeStub(options = {}) {
 
   const vscode = {
     ViewColumn: { Beside: -2 },
+    FileType: { File: 1, Directory: 2 },
+    env: { language: options.language ?? "zh-cn" },
     window: {
       activeTextEditor: options.activeTextEditor,
       terminals: state.terminals,
@@ -51,11 +54,20 @@ function makeStub(options = {}) {
         state.warnings.push(message)
         return Promise.resolve(undefined)
       },
+      async showOpenDialog(settings) {
+        state.dialogs.push(settings)
+        return options.openDialog?.(state) ?? options.files
+      },
     },
     workspace: {
       getConfiguration: () => ({ get: (key) => config[key] }),
-      getWorkspaceFolder: (uri) => (options.inWorkspace === false ? undefined : { uri }),
-      asRelativePath: () => options.relativePath ?? "src/main.ts",
+      workspaceFolders: [{ uri: uri("/w") }],
+      getWorkspaceFolder: (uri) => (options.inWorkspace === false || !uri.path.startsWith("/w/") ? undefined : { uri }),
+      asRelativePath: (uri) => options.relativePath ?? uri.path.slice(3),
+      fs: { stat: async (uri) => {
+        if (options.missing === uri.path) throw new Error("ENOENT")
+        return { type: uri.path.endsWith("/folder") ? 2 : 1 }
+      } },
     },
     commands: {
       registerCommand(id, handler) {
@@ -82,25 +94,24 @@ function loadExtension(stub) {
   }
 }
 
+function uri(path) {
+  return { path, toString: () => `file://${path}` }
+}
+
 function editorWith(selection) {
   return {
-    document: { uri: { path: "/w/src/main.ts" } },
+    document: { uri: uri("/w/src/main.ts") },
     selection,
   }
 }
 
-const empty = { isEmpty: true, start: { line: 0 }, end: { line: 0 } }
-const singleLine = { isEmpty: false, start: { line: 6 }, end: { line: 6 } }
-const multiLine = { isEmpty: false, start: { line: 2 }, end: { line: 4 } }
+const empty = { isEmpty: true, start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }
+const singleLine = { isEmpty: false, start: { line: 6, character: 0 }, end: { line: 6, character: 5 } }
+const multiLine = { isEmpty: false, start: { line: 2, character: 0 }, end: { line: 4, character: 5 } }
 
-const results = []
+const tests = []
 function test(name, fn) {
-  try {
-    fn()
-    results.push(["PASS", name])
-  } catch (error) {
-    results.push(["FAIL", `${name} — ${error.message}`])
-  }
+  tests.push({ name, fn })
 }
 
 function lastSent(terminal) {
@@ -205,7 +216,108 @@ test("injectOnLaunch 打开后新终端也收到引用", () => {
   assert.deepStrictEqual(lastSent(terminal), { text: "@src/main.ts#L3-5", addNewline: false })
 })
 
-const failed = results.filter(([status]) => status === "FAIL")
-for (const [status, name] of results) console.log(`${status}  ${name}`)
-console.log(`\n${results.length - failed.length}/${results.length} 通过`)
-if (failed.length > 0) process.exit(1)
+test("多文件使用资源管理器参数而不是活动编辑器，去重并保序", async () => {
+  const existing = new (makeStub().Terminal)("custom")
+  const stub = makeStub({ terminalName: "custom", terminals: [existing], activeTextEditor: editorWith(singleLine) })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.addFilesToTerminal")(uri("/w/b.ts"), [uri("/w/b.ts"), uri("/w/a.ts"), uri("/w/b.ts")])
+  assert.deepStrictEqual(existing.sent, [{ text: "@b.ts @a.ts", addNewline: false }])
+  assert.strictEqual(stub.state.dialogs.length, 0)
+  assert.strictEqual(stub.state.created.length, 0)
+})
+
+test("资源管理器单文件与含空格/中文路径保留完整引用", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing] })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.addFilesToTerminal")(uri("/w/目录/a b.ts"))
+  assert.deepStrictEqual(existing.sent, [{ text: '"@目录/a b.ts"', addNewline: false }])
+})
+
+test("命令面板打开多文件选择框，取消不发送", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], files: [uri("/w/a.ts"), uri("/w/b.ts")] })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.addFilesToTerminal")()
+  assert.strictEqual(stub.state.dialogs[0].canSelectMany, true)
+  assert.strictEqual(stub.state.dialogs[0].canSelectFolders, false)
+  assert.deepStrictEqual(existing.sent, [{ text: "@a.ts @b.ts", addNewline: false }])
+  const cancelled = makeStub({ terminals: [existing] })
+  loadExtension(cancelled).activate({ subscriptions: [] })
+  await cancelled.state.commands.get("ocv2.addFilesToTerminal")()
+  assert.strictEqual(existing.sent.length, 1)
+})
+
+test("批量包含文件夹、工作区外、缺失或带控制字符的文件时整批不发送", async () => {
+  for (const invalid of ["/w/folder", "/outside/a.ts", "/w/missing.ts", "/w/a\nb.ts", "/w/a\u001bb.ts"]) {
+    const existing = new (makeStub().Terminal)("opencode")
+    const stub = makeStub({ terminals: [existing], missing: "/w/missing.ts" })
+    loadExtension(stub).activate({ subscriptions: [] })
+    await stub.state.commands.get("ocv2.addFilesToTerminal")(undefined, [uri("/w/a.ts"), uri(invalid)])
+    assert.deepStrictEqual(existing.sent, [], invalid)
+    assert.strictEqual(stub.state.warnings.length, 1, invalid)
+  }
+})
+
+test("批量引用在无终端时不打开选择框、不新建终端", async () => {
+  const stub = makeStub({ language: "en", injectOnLaunch: true })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.addFilesToTerminal")()
+  assert.strictEqual(stub.state.dialogs.length, 0)
+  assert.strictEqual(stub.state.created.length, 0)
+  assert.match(stub.state.warnings[0], /No opencode terminal/)
+})
+
+test("异步选择时原终端关闭，不向新同名终端转发引用", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const replacement = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], openDialog: (state) => {
+    state.terminals.splice(0, 1, replacement)
+    return [uri("/w/a.ts")]
+  } })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.addFilesToTerminal")()
+  assert.deepStrictEqual(existing.sent, [])
+  assert.deepStrictEqual(replacement.sent, [])
+  assert.strictEqual(stub.state.warnings.length, 1)
+})
+
+test("选区结束在下一行第 0 列时，不额外引用该行", () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const selection = { ...multiLine, end: { line: 4, character: 0 } }
+  const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(selection) })
+  loadExtension(stub).activate({ subscriptions: [] })
+  stub.state.commands.get("ocv2.addFilepathToTerminal")()
+  assert.deepStrictEqual(lastSent(existing), { text: "@src/main.ts#L3-4", addNewline: false })
+})
+
+test("贡献项和运行时文案有完整的中英本地化键", () => {
+  const fs = require("fs")
+  const english = require("../package.nls.json")
+  const chinese = require("../package.nls.zh-cn.json")
+  assert.deepStrictEqual(Object.keys(english).sort(), Object.keys(chinese).sort())
+  const manifest = require("../package.json")
+  for (const [, key] of JSON.stringify(manifest).matchAll(/%([^%]+)%/g)) assert.ok(english[key], key)
+  const source = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8")
+  for (const [, key] of source.matchAll(/text\("([^"]+)"\)/g)) assert.ok(english[key], key)
+  const stub = makeStub()
+  loadExtension(stub).activate({ subscriptions: [] })
+  for (const command of manifest.contributes.commands) assert.ok(stub.state.commands.has(command.command), command.command)
+  assert.ok(manifest.contributes.menus["explorer/context"].some(item => item.command === "ocv2.addFilesToTerminal"))
+})
+
+async function main() {
+  let failed = 0
+  for (const { name, fn } of tests) {
+    try {
+      await fn()
+      console.log(`PASS  ${name}`)
+    } catch (error) {
+      failed++
+      console.error(`FAIL  ${name} — ${error.stack}`)
+    }
+  }
+  console.log(`\n${tests.length - failed}/${tests.length} 通过`)
+  if (failed) process.exitCode = 1
+}
+void main()

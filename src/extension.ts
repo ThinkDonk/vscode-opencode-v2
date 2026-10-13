@@ -1,7 +1,30 @@
 import * as vscode from "vscode"
 
+// tsc 输出 CommonJS；语言表随扩展打包，不需要引入运行时本地化依赖。
+declare function require(path: string): Record<string, string>
+
 /** opencode 用它识别调用方，官方扩展也设这个变量 */
 const CALLER_ENV = { OPENCODE_CALLER: "vscode" }
+const english: Record<string, string> = require("../package.nls.json")
+const chinese: Record<string, string> = require("../package.nls.zh-cn.json")
+
+function text(key: string): string {
+  return (/^zh-(cn|hans)$/i.test(vscode.env.language) ? chinese[key] : undefined) ?? english[key]
+}
+
+function fileRef(uri: vscode.Uri, range?: vscode.Range): string | undefined {
+  if (!vscode.workspace.getWorkspaceFolder(uri)) return undefined
+  const path = vscode.workspace.asRelativePath(uri).replace(/\\/g, "/")
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
+  let ref = `@${path}`
+  if (range && !range.isEmpty) {
+    const start = range.start.line + 1
+    // VS Code 的选区终点不包含在选区内；下一行第 0 列不应多算一行。
+    const end = range.end.line + (range.end.character === 0 && range.end.line > range.start.line ? 0 : 1)
+    ref += start === end ? `#L${start}` : `#L${start}-${end}`
+  }
+  return /[\s"]/.test(ref) ? JSON.stringify(ref) : ref
+}
 
 type Settings = {
   terminalName: string
@@ -25,19 +48,59 @@ function settings(): Settings {
 function activeFileRef(): string | undefined {
   const editor = vscode.window.activeTextEditor
   if (!editor) return undefined
-  if (!vscode.workspace.getWorkspaceFolder(editor.document.uri)) return undefined
-
-  const ref = `@${vscode.workspace.asRelativePath(editor.document.uri)}`
-  const selection = editor.selection
-  if (selection.isEmpty) return ref
-
-  const start = selection.start.line + 1
-  const end = selection.end.line + 1
-  return start === end ? `${ref}#L${start}` : `${ref}#L${start}-${end}`
+  return fileRef(editor.document.uri, editor.selection)
 }
 
 function findTerminal(name: string): vscode.Terminal | undefined {
   return vscode.window.terminals.find((terminal) => terminal.name === name)
+}
+
+function existingTerminal(): vscode.Terminal | undefined {
+  const terminal = findTerminal(settings().terminalName)
+  if (!terminal) void vscode.window.showWarningMessage(text("message.noTerminal"))
+  return terminal
+}
+
+// 异步选择期间终端可能已关闭。不要另建终端或把草稿转发给另一个会话。
+function insert(terminal: vscode.Terminal, value: string) {
+  if (!vscode.window.terminals.includes(terminal)) {
+    void vscode.window.showWarningMessage(text("message.terminalClosed"))
+    return
+  }
+  terminal.show()
+  terminal.sendText(value, false)
+}
+
+async function addFiles(uri?: vscode.Uri, selectedUris?: vscode.Uri[]) {
+  const terminal = existingTerminal()
+  if (!terminal) return
+  const uris = selectedUris?.length ? selectedUris : uri ? [uri] : await vscode.window.showOpenDialog({
+    canSelectMany: true,
+    canSelectFiles: true,
+    canSelectFolders: false,
+    openLabel: text("dialog.addFiles"),
+    defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri,
+  })
+  if (!uris?.length) return
+
+  const refs: string[] = []
+  const seen = new Set<string>()
+  for (const selected of uris) {
+    if (seen.has(selected.toString())) continue
+    seen.add(selected.toString())
+    const ref = fileRef(selected)
+    try {
+      if (!ref || !((await vscode.workspace.fs.stat(selected)).type & vscode.FileType.File)) {
+        void vscode.window.showWarningMessage(text("message.invalidFiles"))
+        return
+      }
+    } catch {
+      void vscode.window.showWarningMessage(text("message.invalidFiles"))
+      return
+    }
+    refs.push(ref)
+  }
+  insert(terminal, refs.join(" "))
 }
 
 function launch(name: string, binary: string): vscode.Terminal {
@@ -72,15 +135,13 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("ocv2.openTerminal", () => open(false)),
     vscode.commands.registerCommand("ocv2.openNewTerminal", () => open(true)),
+    vscode.commands.registerCommand("ocv2.addFilesToTerminal", addFiles),
     vscode.commands.registerCommand("ocv2.addFilepathToTerminal", () => {
-      const terminal = findTerminal(settings().terminalName)
-      if (!terminal) {
-        void vscode.window.showWarningMessage(`没有正在运行的 opencode 终端，先执行 Open opencode`)
-        return
-      }
+      const terminal = existingTerminal()
+      if (!terminal) return
       const ref = activeFileRef()
       if (!ref) {
-        void vscode.window.showWarningMessage("当前没有打开文件，或文件不属于任何工作区")
+        void vscode.window.showWarningMessage(text("message.noFile"))
         return
       }
       terminal.show()
