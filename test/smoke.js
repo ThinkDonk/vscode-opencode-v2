@@ -456,6 +456,88 @@ test("问题选择期间文件移出工作区，不生成失效引用", async ()
   assert.strictEqual(stub.state.warnings.length, 1)
 })
 
+test("四个选区模板均可生成中英草稿，包含选区引用且不提交", async () => {
+  const expected = [
+    ["解释代码", "请解释这段代码的作用、执行流程和关键边界条件。", "Explain code", "Explain what this code does, its execution flow, and the key edge cases."],
+    ["检查问题", "请检查这段代码中的缺陷和遗漏的边界情况，说明各项问题并给出修复建议。", "Review for problems", "Review this code for bugs and missing edge cases. Explain each issue and suggest a fix."],
+    ["生成测试", "请按照项目现有的测试惯例为这段代码生成测试，覆盖正常流程、边界情况和失败场景。", "Generate tests", "Generate tests for this code using the project's existing test conventions. Cover the normal flow, edge cases, and failures."],
+    ["重构建议", "请在保持对外行为不变的前提下，为这段代码提出重构建议，并说明收益与取舍。", "Suggest a refactor", "Suggest a refactor for this code that preserves its external behavior. Explain the benefits and tradeoffs."],
+  ]
+  for (const language of ["zh-cn", "en"]) {
+    for (let index = 0; index < expected.length; index++) {
+      const existing = new (makeStub().Terminal)("opencode")
+      const stub = makeStub({ terminals: [existing], language, activeTextEditor: editorWith(multiLine),
+        pick: items => items[index], acceptDraft: true,
+      })
+      loadExtension(stub).activate({ subscriptions: [] })
+      await stub.state.commands.get("ocv2.usePromptTemplate")()
+      const offset = language === "en" ? 2 : 0
+      assert.deepStrictEqual(stub.state.picks[0].items.map(item => item.label), expected.map(item => item[offset]))
+      assert.deepStrictEqual(existing.sent, [{ text: `@src/main.ts#L3-5 ${expected[index][offset + 1]}`, addNewline: false }])
+      assert.strictEqual(stub.state.created.length, 0)
+    }
+  }
+})
+
+test("模板使用原始选区，选择过程中切换编辑器不改变引用，并采用编辑后的内容", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(singleLine),
+    pick: items => {
+      stub.vscode.window.activeTextEditor = { document: { uri: uri("/w/switched.ts") }, selection: multiLine }
+      return items[0]
+    },
+    input: settings => settings.value + " 请用初学者能理解的语言。",
+  })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.usePromptTemplate")()
+  assert.deepStrictEqual(existing.sent, [{ text: "@src/main.ts#L7 请解释这段代码的作用、执行流程和关键边界条件。 请用初学者能理解的语言。", addNewline: false }])
+})
+
+test("没有终端、没有编辑器、空选区或工作区外文件不进入模板选择", async () => {
+  for (const options of [
+    { terminals: [], activeTextEditor: editorWith(singleLine) },
+    { activeTextEditor: undefined },
+    { activeTextEditor: editorWith(empty) },
+    { activeTextEditor: editorWith(singleLine), inWorkspace: false },
+  ]) {
+    const existing = new (makeStub().Terminal)("opencode")
+    const stub = makeStub({ terminals: [existing], ...options, injectOnLaunch: true, pick: items => items[0], acceptDraft: true })
+    loadExtension(stub).activate({ subscriptions: [] })
+    await stub.state.commands.get("ocv2.usePromptTemplate")()
+    assert.strictEqual(stub.state.created.length, 0)
+    assert.strictEqual(stub.state.picks.length, 0)
+    assert.strictEqual(stub.state.inputs.length, 0)
+    assert.strictEqual(stub.state.warnings.length + stub.state.information.length, 1)
+    assert.deepStrictEqual(existing.sent, [])
+  }
+})
+
+test("取消模板或编辑步骤不写入终端", async () => {
+  for (const pick of [() => undefined, items => items[0]]) {
+    const existing = new (makeStub().Terminal)("opencode")
+    const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(singleLine), pick })
+    loadExtension(stub).activate({ subscriptions: [] })
+    await stub.state.commands.get("ocv2.usePromptTemplate")()
+    assert.deepStrictEqual(existing.sent, [])
+  }
+})
+
+test("模板沿用草稿校验和原终端关闭保护", async () => {
+  for (const closeTerminal of [false, true]) {
+    const existing = new (makeStub().Terminal)("opencode")
+    const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(singleLine), pick: items => items[0],
+      input: (settings, state) => {
+        if (closeTerminal) state.terminals.splice(0)
+        return closeTerminal ? settings.value : "unwanted\nsubmit"
+      },
+    })
+    loadExtension(stub).activate({ subscriptions: [] })
+    await stub.state.commands.get("ocv2.usePromptTemplate")()
+    assert.deepStrictEqual(existing.sent, [])
+    assert.strictEqual(stub.state.warnings.length, 1)
+  }
+})
+
 async function main() {
   let failed = 0
   for (const { name, fn } of tests) {

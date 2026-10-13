@@ -60,6 +60,10 @@
       {
         "command": "ocv2.sendDiagnostics",
         "title": "%command.sendDiagnostics%"
+      },
+      {
+        "command": "ocv2.usePromptTemplate",
+        "title": "%command.usePromptTemplate%"
       }
     ],
     "keybindings": [
@@ -85,6 +89,11 @@
           "command": "ocv2.sendDiagnostics",
           "group": "opencode",
           "when": "resourceScheme == file || resourceScheme == vscode-remote"
+        },
+        {
+          "command": "ocv2.usePromptTemplate",
+          "group": "opencode",
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == vscode-remote)"
         }
       ],
       "explorer/context": [

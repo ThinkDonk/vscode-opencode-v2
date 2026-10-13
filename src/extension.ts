@@ -193,6 +193,32 @@ function launch(name: string, binary: string): vscode.Terminal {
   return terminal
 }
 
+async function useTemplate() {
+  const terminal = existingTerminal()
+  if (!terminal) return
+  const editor = vscode.window.activeTextEditor
+  const ref = editor && fileRef(editor.document.uri, editor.selection)
+  if (!ref) {
+    void vscode.window.showWarningMessage(text("message.noFile"))
+    return
+  }
+  if (editor.selection.isEmpty) {
+    void vscode.window.showInformationMessage(text("message.selectCode"))
+    return
+  }
+  // 打开选择框前固定原选区，切换编辑器或选区不会把请求指向别处。
+  const template = await vscode.window.showQuickPick([
+    { label: text("template.explain"), prompt: text("prompt.explain") },
+    { label: text("template.review"), prompt: text("prompt.review") },
+    { label: text("template.tests"), prompt: text("prompt.tests") },
+    { label: text("template.refactor"), prompt: text("prompt.refactor") },
+  ], {
+    title: text("dialog.templates"),
+    placeHolder: text("dialog.selectTemplate"),
+  })
+  if (template) await editDraft(terminal, `${ref} ${template.prompt}`)
+}
+
 export function activate(context: vscode.ExtensionContext) {
   function open(forceNew: boolean) {
     const { terminalName, binary, injectOnLaunch } = settings()
@@ -215,6 +241,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("ocv2.openNewTerminal", () => open(true)),
     vscode.commands.registerCommand("ocv2.addFilesToTerminal", addFiles),
     vscode.commands.registerCommand("ocv2.sendDiagnostics", sendDiagnostics),
+    vscode.commands.registerCommand("ocv2.usePromptTemplate", useTemplate),
     vscode.languages.registerCodeActionsProvider("*", {
       provideCodeActions(document, _range, actionContext) {
         if (!fileRef(document.uri)) return []
