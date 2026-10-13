@@ -7,17 +7,18 @@ declare function require(path: string): Record<string, string>
 const CALLER_ENV = { OPENCODE_CALLER: "vscode" }
 const english: Record<string, string> = require("../package.nls.json")
 const chinese: Record<string, string> = require("../package.nls.zh-cn.json")
+const controlCharacters = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/
 
 function text(key: string): string {
   return (/^zh-(cn|hans)$/i.test(vscode.env.language) ? chinese[key] : undefined) ?? english[key]
 }
 
-function fileRef(uri: vscode.Uri, range?: vscode.Range): string | undefined {
+function fileRef(uri: vscode.Uri, range?: vscode.Range, includeEmptyRange = false): string | undefined {
   if (!vscode.workspace.getWorkspaceFolder(uri)) return undefined
   const path = vscode.workspace.asRelativePath(uri).replace(/\\/g, "/")
-  if (/[\u0000-\u001f\u007f-\u009f]/.test(path)) return undefined
+  if (controlCharacters.test(path)) return undefined
   let ref = `@${path}`
-  if (range && !range.isEmpty) {
+  if (range && (!range.isEmpty || includeEmptyRange)) {
     const start = range.start.line + 1
     // VS Code 的选区终点不包含在选区内；下一行第 0 列不应多算一行。
     const end = range.end.line + (range.end.character === 0 && range.end.line > range.start.line ? 0 : 1)
@@ -103,6 +104,83 @@ async function addFiles(uri?: vscode.Uri, selectedUris?: vscode.Uri[]) {
   insert(terminal, refs.join(" "))
 }
 
+function singleLine(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim()
+}
+
+async function editDraft(terminal: vscode.Terminal, value: string) {
+  const validate = (draft: string) => !draft.trim() || controlCharacters.test(draft)
+    ? text("message.invalidDraft") : undefined
+  const draft = await vscode.window.showInputBox({
+    title: text("dialog.editDraft"),
+    prompt: text("dialog.draftHelp"),
+    value,
+    valueSelection: [0, value.length],
+    validateInput: validate,
+  })
+  if (draft === undefined) return
+  const error = validate(draft)
+  if (error) {
+    void vscode.window.showWarningMessage(error)
+    return
+  }
+  insert(terminal, draft.trim())
+}
+
+function isProblem(diagnostic: vscode.Diagnostic): boolean {
+  return diagnostic.severity === vscode.DiagnosticSeverity.Error || diagnostic.severity === vscode.DiagnosticSeverity.Warning
+}
+
+function diagnosticText(diagnostic: vscode.Diagnostic): string {
+  const severity = text(diagnostic.severity === vscode.DiagnosticSeverity.Error ? "diagnostic.error" : "diagnostic.warning")
+  const code = typeof diagnostic.code === "object" ? diagnostic.code.value : diagnostic.code
+  const origin = [diagnostic.source, code].filter(value => value !== undefined && value !== "").join(" ")
+  return singleLine(`${severity}${origin ? ` [${origin}]` : ""}: ${diagnostic.message}`)
+}
+
+async function sendDiagnostics(uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) {
+  const terminal = existingTerminal()
+  if (!terminal) return
+  const target = uri ?? vscode.window.activeTextEditor?.document.uri
+  if (!target || !fileRef(target)) {
+    void vscode.window.showWarningMessage(text("message.noFile"))
+    return
+  }
+  let selected: readonly vscode.Diagnostic[]
+  if (diagnostic && isProblem(diagnostic)) {
+    selected = [diagnostic]
+  } else {
+    const diagnostics = vscode.languages.getDiagnostics(target).filter(isProblem)
+    if (!diagnostics.length) {
+      void vscode.window.showInformationMessage(text("message.noDiagnostics"))
+      return
+    }
+    const items = diagnostics.map(item => ({
+      label: diagnosticText(item),
+      description: `L${item.range.start.line + 1}:${item.range.start.character + 1}`,
+      diagnostic: item,
+    }))
+    const picked = await vscode.window.showQuickPick(items, {
+      title: text("dialog.diagnostics"),
+      placeHolder: text("dialog.selectDiagnostics"),
+      canPickMany: true,
+      matchOnDescription: true,
+    })
+    if (!picked?.length) return
+    selected = picked.map(item => item.diagnostic)
+  }
+  const problems: string[] = []
+  for (const item of selected) {
+    const ref = fileRef(target, item.range, true)
+    if (!ref) {
+      void vscode.window.showWarningMessage(text("message.noFile"))
+      return
+    }
+    problems.push(`${ref} ${diagnosticText(item)}`)
+  }
+  await editDraft(terminal, `${text("prompt.diagnostics")} ${problems.join(" | ")}`)
+}
+
 function launch(name: string, binary: string): vscode.Terminal {
   const terminal = vscode.window.createTerminal({
     name,
@@ -136,6 +214,22 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("ocv2.openTerminal", () => open(false)),
     vscode.commands.registerCommand("ocv2.openNewTerminal", () => open(true)),
     vscode.commands.registerCommand("ocv2.addFilesToTerminal", addFiles),
+    vscode.commands.registerCommand("ocv2.sendDiagnostics", sendDiagnostics),
+    vscode.languages.registerCodeActionsProvider("*", {
+      provideCodeActions(document, _range, actionContext) {
+        if (!fileRef(document.uri)) return []
+        return actionContext.diagnostics.filter(isProblem).map(diagnostic => {
+          const action = new vscode.CodeAction(text("action.diagnostic"), vscode.CodeActionKind.QuickFix)
+          action.diagnostics = [diagnostic]
+          action.command = {
+            command: "ocv2.sendDiagnostics",
+            title: action.title,
+            arguments: [document.uri, diagnostic],
+          }
+          return action
+        })
+      },
+    }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
     vscode.commands.registerCommand("ocv2.addFilepathToTerminal", () => {
       const terminal = existingTerminal()
       if (!terminal) return

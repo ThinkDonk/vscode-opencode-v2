@@ -15,6 +15,11 @@ function makeStub(options = {}) {
     commands: new Map(),
     created: [],
     dialogs: [],
+    picks: [],
+    inputs: [],
+    information: [],
+    providers: [],
+    diagnosticQueries: [],
   }
 
   const config = {
@@ -41,6 +46,9 @@ function makeStub(options = {}) {
     ViewColumn: { Beside: -2 },
     FileType: { File: 1, Directory: 2 },
     env: { language: options.language ?? "zh-cn" },
+    DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
+    CodeActionKind: { QuickFix: "quickfix" },
+    CodeAction: class { constructor(title, kind) { this.title = title; this.kind = kind } },
     window: {
       activeTextEditor: options.activeTextEditor,
       terminals: state.terminals,
@@ -58,6 +66,16 @@ function makeStub(options = {}) {
         state.dialogs.push(settings)
         return options.openDialog?.(state) ?? options.files
       },
+      async showQuickPick(items, settings) {
+        state.picks.push({ items, settings })
+        return options.pick?.(items, state)
+      },
+      async showInputBox(settings) {
+        state.inputs.push(settings)
+        if (options.input) return options.input(settings, state)
+        return options.acceptDraft ? settings.value : undefined
+      },
+      async showInformationMessage(message) { state.information.push(message) },
     },
     workspace: {
       getConfiguration: () => ({ get: (key) => config[key] }),
@@ -72,6 +90,13 @@ function makeStub(options = {}) {
     commands: {
       registerCommand(id, handler) {
         state.commands.set(id, handler)
+        return { dispose() {} }
+      },
+    },
+    languages: {
+      getDiagnostics(uri) { state.diagnosticQueries.push(uri); return options.diagnostics ?? [] },
+      registerCodeActionsProvider(selector, provider, metadata) {
+        state.providers.push({ selector, provider, metadata })
         return { dispose() {} }
       },
     },
@@ -249,7 +274,7 @@ test("命令面板打开多文件选择框，取消不发送", async () => {
 })
 
 test("批量包含文件夹、工作区外、缺失或带控制字符的文件时整批不发送", async () => {
-  for (const invalid of ["/w/folder", "/outside/a.ts", "/w/missing.ts", "/w/a\nb.ts", "/w/a\u001bb.ts"]) {
+  for (const invalid of ["/w/folder", "/outside/a.ts", "/w/missing.ts", "/w/a\nb.ts", "/w/a\u001bb.ts", "/w/a\u2028b.ts"]) {
     const existing = new (makeStub().Terminal)("opencode")
     const stub = makeStub({ terminals: [existing], missing: "/w/missing.ts" })
     loadExtension(stub).activate({ subscriptions: [] })
@@ -304,6 +329,131 @@ test("贡献项和运行时文案有完整的中英本地化键", () => {
   loadExtension(stub).activate({ subscriptions: [] })
   for (const command of manifest.contributes.commands) assert.ok(stub.state.commands.has(command.command), command.command)
   assert.ok(manifest.contributes.menus["explorer/context"].some(item => item.command === "ocv2.addFilesToTerminal"))
+})
+
+function problem(severity = 0, message = "Cannot find name 'foo'.", range = singleLine) {
+  return { severity, message, range, source: "ts", code: 2304 }
+}
+
+test("灯泡只为错误和警告生成动作，执行时使用诊断原文件与精确位置", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(empty), acceptDraft: true })
+  loadExtension(stub).activate({ subscriptions: [] })
+  const error = problem(0)
+  const warning = problem(1)
+  const source = { uri: uri("/w/other.ts") }
+  const actions = stub.state.providers[0].provider.provideCodeActions(source, empty, {
+    diagnostics: [error, warning, problem(2), problem(3)],
+  })
+  assert.strictEqual(actions.length, 2)
+  assert.deepStrictEqual(actions[0].diagnostics, [error])
+  assert.strictEqual(actions[0].kind, "quickfix")
+  assert.deepStrictEqual(existing.sent, [], "展示灯泡不能触发发送")
+  const command = actions[0].command
+  await stub.state.commands.get(command.command)(...command.arguments)
+  assert.strictEqual(stub.state.picks.length, 0)
+  assert.deepStrictEqual(existing.sent, [{
+    text: "请解释以下问题的原因，并给出修复建议： @other.ts#L7 错误 [ts 2304]: Cannot find name 'foo'.",
+    addNewline: false,
+  }])
+})
+
+test("当前文件问题可多选，保留类型、来源、诊断编号与行号，使用编辑后的草稿", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({
+    terminals: [existing], activeTextEditor: editorWith(empty), language: "de",
+    diagnostics: [problem(0), { ...problem(1, "Unused value", multiLine), code: { value: "W01", target: uri("/docs") } }, problem(2)],
+    pick: items => items,
+    input: settings => settings.value + " Please prioritize the warning.",
+  })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.sendDiagnostics")()
+  assert.strictEqual(stub.state.picks[0].items.length, 2)
+  assert.strictEqual(stub.state.picks[0].settings.canPickMany, true)
+  assert.strictEqual(stub.state.diagnosticQueries[0].path, "/w/src/main.ts")
+  assert.deepStrictEqual(existing.sent, [{ text: "Explain the causes of these problems and suggest fixes: @src/main.ts#L7 Error [ts 2304]: Cannot find name 'foo'. | @src/main.ts#L3-5 Warning [ts W01]: Unused value Please prioritize the warning.", addNewline: false }])
+})
+
+test("无错误/警告时给出说明；工作区外文件不提供诊断动作", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(empty), diagnostics: [problem(2)] })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.sendDiagnostics")()
+  assert.strictEqual(stub.state.information.length, 1)
+  assert.strictEqual(stub.state.picks.length, 0)
+  const actions = stub.state.providers[0].provider.provideCodeActions({ uri: uri("/outside/a.ts") }, empty, { diagnostics: [problem()] })
+  assert.deepStrictEqual(actions, [])
+  await stub.state.commands.get("ocv2.sendDiagnostics")(uri("/outside/a.ts"), problem())
+  assert.strictEqual(stub.state.warnings.length, 1)
+  assert.deepStrictEqual(existing.sent, [])
+})
+
+test("取消问题选择或草稿编辑不发送", async () => {
+  for (const pick of [() => undefined, () => [], items => items]) {
+    const existing = new (makeStub().Terminal)("opencode")
+    const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(empty), diagnostics: [problem()], pick })
+    loadExtension(stub).activate({ subscriptions: [] })
+    await stub.state.commands.get("ocv2.sendDiagnostics")()
+    assert.deepStrictEqual(existing.sent, [])
+  }
+})
+
+test("多行诊断和来源中的控制字符转为单行，零宽诊断仍携带行号", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], acceptDraft: true })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.sendDiagnostics")(uri("/w/a.ts"), {
+    ...problem(0, "first\r\nsecond\u001b[31m\u2028last", empty), source: "lint\r\nsource", code: 0,
+  })
+  assert.strictEqual(existing.sent.length, 1)
+  assert.match(existing.sent[0].text, /@a.ts#L1 错误 \[lint source 0\]: first second \[31m last/)
+  assert.doesNotMatch(existing.sent[0].text, /[\x00-\x1f\x7f-\x9f\u2028\u2029]/)
+  assert.strictEqual(existing.sent[0].addNewline, false)
+})
+
+test("空白或带换行/控制字符的用户草稿不会送入终端", async () => {
+  for (const input of ["  ", "first\nsecond", "first\rsecond", "first\u001bsecond", "first\u2028second"]) {
+    const existing = new (makeStub().Terminal)("opencode")
+    const stub = makeStub({ terminals: [existing], input: () => input })
+    loadExtension(stub).activate({ subscriptions: [] })
+    await stub.state.commands.get("ocv2.sendDiagnostics")(uri("/w/a.ts"), problem())
+    assert.ok(stub.state.inputs[0].validateInput(input))
+    assert.strictEqual(stub.state.inputs[0].validateInput("valid draft"), undefined)
+    assert.deepStrictEqual(existing.sent, [])
+    assert.strictEqual(stub.state.warnings.length, 1)
+  }
+})
+
+test("诊断命令不会创建终端，异步编辑时终端关闭也不转发", async () => {
+  const absent = makeStub({ injectOnLaunch: true })
+  loadExtension(absent).activate({ subscriptions: [] })
+  await absent.state.commands.get("ocv2.sendDiagnostics")(uri("/w/a.ts"), problem())
+  assert.strictEqual(absent.state.created.length, 0)
+  assert.strictEqual(absent.state.inputs.length, 0)
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], input: (settings, state) => {
+    state.terminals.splice(0)
+    return settings.value
+  } })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.sendDiagnostics")(uri("/w/a.ts"), problem())
+  assert.deepStrictEqual(existing.sent, [])
+  assert.strictEqual(stub.state.warnings.length, 1)
+})
+
+test("问题选择期间文件移出工作区，不生成失效引用", async () => {
+  const existing = new (makeStub().Terminal)("opencode")
+  const stub = makeStub({ terminals: [existing], activeTextEditor: editorWith(empty), diagnostics: [problem()],
+    acceptDraft: true, pick: items => {
+      stub.vscode.workspace.getWorkspaceFolder = () => undefined
+      return items
+    },
+  })
+  loadExtension(stub).activate({ subscriptions: [] })
+  await stub.state.commands.get("ocv2.sendDiagnostics")()
+  assert.deepStrictEqual(existing.sent, [])
+  assert.strictEqual(stub.state.inputs.length, 0)
+  assert.strictEqual(stub.state.warnings.length, 1)
 })
 
 async function main() {

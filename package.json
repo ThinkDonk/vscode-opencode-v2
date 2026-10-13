@@ -34,7 +34,7 @@
     "Other"
   ],
   "main": "./out/extension.js",
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
       {
@@ -56,6 +56,10 @@
       {
         "command": "ocv2.addFilesToTerminal",
         "title": "%command.addFilesToTerminal%"
+      },
+      {
+        "command": "ocv2.sendDiagnostics",
+        "title": "%command.sendDiagnostics%"
       }
     ],
     "keybindings": [
@@ -76,6 +80,13 @@
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "ocv2.sendDiagnostics",
+          "group": "opencode",
+          "when": "resourceScheme == file || resourceScheme == vscode-remote"
+        }
+      ],
       "explorer/context": [
         {
           "command": "ocv2.addFilesToTerminal",
