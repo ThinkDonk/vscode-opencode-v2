@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
+### Changed
+
+- 扩展列表图标改为 OpenCode 标志，编辑器标题栏与新建终端同步使用适配浅色／深色主题的标志
+- 补充图标来源、许可与已有终端需要新建才能更新图标的说明
+
 ## [0.2.0] - 2026-10-13
 
 ### Added
@@ -38,6 +45,7 @@
 - 只走终端通道：不调用 opencode 的 HTTP 接口、不解析 stdout、不探测版本，因此不受 CLI 接口变更影响
 - 终端复用依据名字 `opencode`；需要隔离时改 `ocv2.terminalName`
 
-[Unreleased]: https://github.com/ThinkDonk/vscode-opencode-v2/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ThinkDonk/vscode-opencode-v2/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ThinkDonk/vscode-opencode-v2/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ThinkDonk/vscode-opencode-v2/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ThinkDonk/vscode-opencode-v2/releases/tag/v0.1.0

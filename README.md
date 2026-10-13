@@ -76,6 +76,8 @@ code --install-extension vscode-opencode-v2-<version>.vsix
 
 Then run `Developer: Reload Window`.
 
+The extension list, editor title bar, and newly created terminals use the OpenCode mark, with light/dark variants for the toolbar and terminal. Existing terminals keep their previous icon; open a new terminal to see the updated mark. Artwork sources and license are in [images/NOTICE.md](images/NOTICE.md).
+
 ## Settings
 
 | Setting | Default | Description |

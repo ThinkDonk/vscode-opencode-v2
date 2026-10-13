@@ -76,6 +76,8 @@ code --install-extension vscode-opencode-v2-<version>.vsix
 
 装完执行一次 `Developer: Reload Window`。
 
+扩展列表、编辑器标题栏和新建终端统一使用 OpenCode 标志，标题栏和终端图标适配浅色／深色主题。已有终端保留原图标，新建终端即可看到更新。图标来源及许可见 [images/NOTICE.md](images/NOTICE.md)。
+
 ## 设置项
 
 | 设置 | 默认 | 说明 |
