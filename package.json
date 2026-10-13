@@ -2,7 +2,7 @@
   "name": "vscode-opencode-v2",
   "displayName": "OpenCode v2 TUI",
   "description": "%extension.description%",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "ThinkDonk",
   "license": "MIT",
   "galleryBanner": {
@@ -34,7 +34,9 @@
     "Other"
   ],
   "main": "./out/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
       {
