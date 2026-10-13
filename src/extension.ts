@@ -181,11 +181,15 @@ async function sendDiagnostics(uri?: vscode.Uri, diagnostic?: vscode.Diagnostic)
   await editDraft(terminal, `${text("prompt.diagnostics")} ${problems.join(" | ")}`)
 }
 
-function launch(name: string, binary: string): vscode.Terminal {
+function launch(name: string, binary: string, extensionUri: vscode.Uri): vscode.Terminal {
   const terminal = vscode.window.createTerminal({
     name,
     location: { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
     env: CALLER_ENV,
+    iconPath: {
+      light: vscode.Uri.joinPath(extensionUri, "images", "icon-light.svg"),
+      dark: vscode.Uri.joinPath(extensionUri, "images", "icon-dark.svg"),
+    },
   })
   terminal.show()
   // v2 的裸 opencode 就是 TUI 入口，不能再带 v1 的 --port
@@ -231,7 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
       return
     }
 
-    const terminal = launch(terminalName, binary)
+    const terminal = launch(terminalName, binary, context.extensionUri)
     const ref = activeFileRef()
     if (ref && injectOnLaunch) terminal.sendText(ref, false)
   }

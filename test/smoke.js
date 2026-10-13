@@ -43,6 +43,7 @@ function makeStub(options = {}) {
   }
 
   const vscode = {
+    Uri: { joinPath: (base, ...segments) => uri(path.posix.join(base.path, ...segments)) },
     ViewColumn: { Beside: -2 },
     FileType: { File: 1, Directory: 2 },
     env: { language: options.language ?? "zh-cn" },
@@ -113,7 +114,8 @@ function loadExtension(stub) {
   }
   try {
     delete require.cache[require.resolve(extensionPath)]
-    return require(extensionPath)
+    const extension = require(extensionPath)
+    return { ...extension, activate: context => extension.activate({ extensionUri: uri("/extension"), ...context }) }
   } finally {
     Module._load = originalLoad
   }
@@ -163,6 +165,8 @@ test("createTerminal 传入 OPENCODE_CALLER=vscode 与分屏位置", () => {
   const { opts } = stub.state.created[0]
   assert.strictEqual(opts.env.OPENCODE_CALLER, "vscode")
   assert.strictEqual(opts.location.viewColumn, stub.vscode.ViewColumn.Beside)
+  assert.strictEqual(opts.iconPath.light.path, "/extension/images/icon-light.svg")
+  assert.strictEqual(opts.iconPath.dark.path, "/extension/images/icon-dark.svg")
 })
 
 test("已存在同名终端时复用，并把多行选区引用送进去", () => {
